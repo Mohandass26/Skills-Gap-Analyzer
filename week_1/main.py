@@ -3,8 +3,8 @@ from pathlib import Path
 
 from src.ingestor import ingest_all_mhtml
 from src.processor import process_all_html
-#from src.loader import load_all_jsons
-#from src.profiler import run_data_profile
+from src.loader import load_all_jsons
+from src.profiler import run_data_profile
 
 
 SOURCE_DIR = Path("data/0_source")
@@ -14,15 +14,22 @@ GOLD_DIR = Path("data/3_gold")
 DB_NAME = "jobs.db"
 
 
+def run_all():
+    run_bronze()
+    run_silver()
+    run_gold()
+    run_profiler()
+
+
 def run_profiler():
     db_path = GOLD_DIR / DB_NAME
-    #run_data_profile(db_path)
+    run_data_profile(db_path)
 
 
 def run_gold():
     input_dir = SILVER_DIR
     output_dir = GOLD_DIR
-    #load_all_jsons(input_dir, output_dir)
+    load_all_jsons(input_dir, output_dir)
 
 
 def run_silver():
@@ -43,13 +50,14 @@ def main():
         "bronze": run_bronze,
         "process": run_silver,
         "silver": run_silver,
+        "load": run_gold,
         "gold": run_gold,
         "profile": run_profiler,
+        "all": run_all,
     }
 
     if len(sys.argv) < 2:
-        print("Please provide a command.")
-        print("Example: python main.py ingest")
+        print("Usage: python main.py [ingest|process|load|profile|all]")
         print("\nAvailable commands:")
         for command in commands:
             print(f"  - {command}")
