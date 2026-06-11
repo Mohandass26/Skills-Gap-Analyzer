@@ -1,5 +1,6 @@
 from pathlib import Path
 import json
+import re
 from bs4 import BeautifulSoup
 from pydantic import BaseModel, ValidationError
 
@@ -15,7 +16,15 @@ def clean_text(element):
     if element is None:
         return ""
 
-    return element.get_text(separator=" ", strip=True)
+    text = element.get_text(separator=" ", strip=True)
+
+    # Replace multiple spaces, tabs, and new lines with one space
+    text = re.sub(r"\s+", " ", text)
+
+    # Remove leading/trailing spaces
+    text = text.strip()
+
+    return text
 
 
 def extract_source_id(soup):
