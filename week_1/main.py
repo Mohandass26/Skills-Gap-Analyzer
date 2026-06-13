@@ -56,7 +56,7 @@ def main():
         "all": run_all,
     }
 
-    if len(sys.argv) < 2:
+    if len(sys.argv) != 2:
         print("Usage: python main.py [ingest|process|load|profile|all]")
         print("\nAvailable commands:")
         for command in commands:

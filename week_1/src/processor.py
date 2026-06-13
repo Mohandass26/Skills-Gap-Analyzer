@@ -16,15 +16,7 @@ def clean_text(element):
     if element is None:
         return ""
 
-    text = element.get_text(separator=" ", strip=True)
-
-    # Replace multiple spaces, tabs, and new lines with one space
-    text = re.sub(r"\s+", " ", text)
-
-    # Remove leading/trailing spaces
-    text = text.strip()
-
-    return text
+    return element.get_text(separator=" ", strip=True)
 
 
 def extract_source_id(soup):

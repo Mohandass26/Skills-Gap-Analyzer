@@ -48,18 +48,7 @@ def load_all_jsons(input_dir, output_dir):
             with open(file, "r", encoding="utf-8") as f:
                 data = json.load(f)
 
-            missing_fields = [
-                field for field in REQUIRED_FIELDS
-                if field not in data or not data[field]
-            ]
-
-            if missing_fields:
-                for field in missing_fields:
-                    print(f"⚠️ Missing {field} in: {file.name}")
-
-                skipped += 1
-                continue
-
+            
             cursor.execute(
                 """
                 INSERT OR IGNORE INTO jobs (

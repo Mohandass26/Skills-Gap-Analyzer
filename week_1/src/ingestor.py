@@ -1,6 +1,7 @@
 from pathlib import Path
 from email import policy
 from email.parser import BytesParser
+import quopri
 
 
 def ingest_all_mhtml(input_dir, output_dir):
@@ -33,11 +34,28 @@ def ingest_all_mhtml(input_dir, output_dir):
             if msg.is_multipart():
                 for part in msg.walk():
                     if part.get_content_type() == "text/html":
-                        html_content = part.get_content()
+                        charset = part.get_content_charset() or "utf-8"
+
+                        payload = part.get_payload(decode=False)
+
+                        if isinstance(payload, str):
+                            html_bytes = quopri.decodestring(payload.encode())
+                            html_content = html_bytes.decode(charset, errors="replace")
+                        else:
+                            html_content = part.get_content()
+
                         break
             else:
                 if msg.get_content_type() == "text/html":
-                    html_content = msg.get_content()
+                    charset = msg.get_content_charset() or "utf-8"
+
+                    payload = msg.get_payload(decode=False)
+
+                    if isinstance(payload, str):
+                        html_bytes = quopri.decodestring(payload.encode())
+                        html_content = html_bytes.decode(charset, errors="replace")
+                    else:
+                        html_content = msg.get_content()
 
             if not html_content:
                 print(f"⚠️ No HTML content found in: {file.name}")
