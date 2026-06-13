@@ -7,6 +7,12 @@ import hashlib
 REQUIRED_FIELDS = ["source_id", "job_title", "company", "description"]
 
 
+def load_sql(filepath):
+    """Load a SQL query from a .sql file."""
+    with open(filepath, "r", encoding="utf-8") as f:
+        return f.read()
+
+
 def compute_content_hash(job_title, company, description):
     hash_input = f"{job_title}|{company}|{description}"
     return hashlib.sha256(hash_input.encode()).hexdigest()
@@ -31,18 +37,13 @@ def load_all_jsons(input_dir, output_dir):
     connection = sqlite3.connect(db_path)
     cursor = connection.cursor()
 
-    cursor.execute(
-        """
-        CREATE TABLE IF NOT EXISTS jobs (
-            source_id TEXT PRIMARY KEY,
-            job_title TEXT,
-            company TEXT,
-            description TEXT,
-            tech_stack TEXT,
-            content_hash TEXT
-        )
-        """
-    )
+    # Load all SQL from files 
+    sql_create = load_sql("queries/create_jobs_table.sql")
+    sql_select = load_sql("queries/select_job_by_id.sql")
+    sql_insert = load_sql("queries/insert_job.sql")
+    sql_update = load_sql("queries/update_job.sql")
+
+    cursor.execute(sql_create)
 
     json_files = list(input_path.glob("*.json"))
 
@@ -56,39 +57,32 @@ def load_all_jsons(input_dir, output_dir):
             with open(file, "r", encoding="utf-8") as f:
                 data = json.load(f)
 
+            
+            missing = [field for field in REQUIRED_FIELDS if field not in data]
+            if missing:
+                raise ValueError(f"Missing fields: {missing}")
+
+            
             new_hash = compute_content_hash(
                 data["job_title"],
                 data["company"],
                 data["description"]
             )
 
-            # Check if source_id already exists
-            cursor.execute(
-                "SELECT content_hash FROM jobs WHERE source_id = ?",
-                (data["source_id"],)
-            )
+            
+            cursor.execute(sql_select, (data["source_id"],))
             existing = cursor.fetchone()
 
             if existing is None:
-                # Brand new record — insert it
+                
                 cursor.execute(
-                    """
-                    INSERT INTO jobs (
-                        source_id,
-                        job_title,
-                        company,
-                        description,
-                        tech_stack,
-                        content_hash
-                    )
-                    VALUES (?, ?, ?, ?, ?, ?)
-                    """,
+                    sql_insert,
                     (
                         data["source_id"],
                         data["job_title"],
                         data["company"],
                         data["description"],
-                        data.get("tech_stack", None),
+                        data.get("tech_stack"),
                         new_hash
                     )
                 )
@@ -96,22 +90,14 @@ def load_all_jsons(input_dir, output_dir):
                 inserted += 1
 
             elif existing[0] != new_hash:
-                # Same source_id but content has changed — update it
+                
                 cursor.execute(
-                    """
-                    UPDATE jobs
-                    SET job_title = ?,
-                        company = ?,
-                        description = ?,
-                        tech_stack = ?,
-                        content_hash = ?
-                    WHERE source_id = ?
-                    """,
+                    sql_update,
                     (
                         data["job_title"],
                         data["company"],
                         data["description"],
-                        data.get("tech_stack", None),
+                        data.get("tech_stack"),
                         new_hash,
                         data["source_id"]
                     )
@@ -120,7 +106,7 @@ def load_all_jsons(input_dir, output_dir):
                 updated += 1
 
             else:
-                # Same source_id, same content — skip
+                
                 print(f"⏭️  Skipped (no change): {file.name}")
                 skipped += 1
 
