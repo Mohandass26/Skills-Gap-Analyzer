@@ -410,7 +410,7 @@ What happens if `processor.py` crashes halfway? How are automated orchestration 
 
 If `processor.py` crashes midway, only a subset of files may be processed, resulting in an incomplete pipeline execution. In this project, `main.py` acts as a simple orchestrator that allows each stage to be executed independently or through the `all` command. However, enterprise orchestration tools such as Apache Airflow provide additional capabilities including scheduling, dependency management, automatic retries, monitoring, alerting, and execution tracking. These features improve reliability and reduce manual intervention when failures occur.
 
-
+---
 
 
 
