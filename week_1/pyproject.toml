@@ -1,7 +1,7 @@
 [project]
 name = "week-1"
 version = "0.1.0"
-description = "Add your description here"
+description = "Data Input & Processing Component"
 readme = "README.md"
 requires-python = ">=3.14"
 dependencies = [

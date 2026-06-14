@@ -312,6 +312,56 @@ python main.py all
 
 ---
 
+## Bonus Implementation
+
+### Content Hashing
+
+A content hashing mechanism was implemented using the SHA-256 algorithm to detect changes in job postings. The hash is generated from the combination of the job title, company name, and job description. This ensures that changes to a job posting can be identified even when the source ID remains unchanged.
+
+The generated hash is stored in the database as `content_hash` and is used during the loading process to determine whether a record should be inserted, updated, or skipped.
+
+#### Benefits
+
+* Detects modifications to existing job postings.
+* Prevents outdated records from remaining in the database.
+* Supports automatic record updates when content changes.
+* Improves overall data integrity and consistency.
+
+#### Update Logic
+
+* New `source_id` → Insert record.
+* Existing `source_id` with the same `job_title`, `company` and `desription` → Skip record.
+* Existing `source_id` with a different `job_title`, `company` and `desription` → Update record.
+
+---
+
+### SQL Query Externalization
+
+To improve code maintainability and readability, SQL statements were separated from the Python source code and stored in dedicated `.sql` files. Instead of embedding SQL queries directly within the application, the queries are loaded dynamically when required.
+
+A dedicated `queries` folder was created to store SQL scripts used by the Loader and Profiler components.
+
+#### Benefits
+
+* Separates application logic from database logic.
+* Improves readability and maintainability of the codebase.
+* Simplifies future modifications to SQL queries.
+* Encourages better project organization and reusability.
+
+#### Example Query Structure
+
+```text
+queries/
+├── create_jobs_table.sql
+├── select_job_by_id.sql
+├── insert_job.sql
+└── update_job.sql
+```
+
+By externalizing SQL statements and implementing content hashing, the project becomes more scalable, maintainable, and capable of handling data updates efficiently while preserving data quality.
+
+---
+
 # Technical Reflections
 
 ## Day 1: The Extractor (Medallion & Lakehouses)
@@ -360,7 +410,6 @@ What happens if `processor.py` crashes halfway? How are automated orchestration 
 
 If `processor.py` crashes midway, only a subset of files may be processed, resulting in an incomplete pipeline execution. In this project, `main.py` acts as a simple orchestrator that allows each stage to be executed independently or through the `all` command. However, enterprise orchestration tools such as Apache Airflow provide additional capabilities including scheduling, dependency management, automatic retries, monitoring, alerting, and execution tracking. These features improve reliability and reduce manual intervention when failures occur.
 
----
 
 
 
