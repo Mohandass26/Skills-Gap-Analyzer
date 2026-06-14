@@ -330,8 +330,8 @@ The generated hash is stored in the database as `content_hash` and is used durin
 #### Update Logic
 
 * New `source_id` → Insert record.
-* Existing `source_id` with the same `job_title`, `company` and `desription` → Skip record.
-* Existing `source_id` with a different `job_title`, `company` and `desription` → Update record.
+* Existing `source_id` with the same `job_title`, `company` and `description` → Skip record.
+* Existing `source_id` with a different `job_title`, `company` and `description` → Update record.
 
 ---
 
