@@ -1,53 +1,73 @@
 import sys
-import os
-import google.generativeai as genai
 import ollama
+from google import genai
 from dotenv import load_dotenv
 
-# Load API key from .env file
 load_dotenv()
-genai.configure(api_key=os.environ.get("GOOGLE_API_KEY"))
 
-GOOGLE_MODELS = [
-    "gemini-2.5-flash",
-    "gemini-2.5-flash-lite",
-    "gemini-3-flash-preview"
-]
+gemini_client = genai.Client()      # reads GEMINI_API_KEY (or GOOGLE_API_KEY) from env
+ollama_client = ollama.Client()
 
-OLLAMA_MODELS = [
+OLLAMA_MODELS = {
     "llama3.1",
     "phi3",
-    "deepseek-r1:1.5b"
-]
+    "deepseek-r1:1.5b",
+    "gemma3:1b",
+}
 
-def prompt_model(model: str, prompt: str) -> str:
+GEMINI_MODELS = {
+    "gemini-2.5-flash-lite",
+    "gemini-2.5-flash",
+    "gemini-3-flash-preview",
+    "gemini-3.1-flash-lite",
+}
+
+
+def prompt_model(llm_model: str, prompt: str) -> str | None:
+    llm_model = llm_model.strip()
+    prompt = prompt.strip()
+
+    if not llm_model or not prompt:
+        print("Error: <model> and <prompt> cannot be empty.")
+        return None
+
     try:
-        if model in GOOGLE_MODELS:
-            gemini = genai.GenerativeModel(model)
-            response = gemini.generate_content(prompt)
+        if llm_model in OLLAMA_MODELS:
+            response = ollama_client.generate(
+                model=llm_model,
+                prompt=prompt,
+            )
+            return response.response
+
+        elif llm_model in GEMINI_MODELS:
+            response = gemini_client.models.generate_content(
+                model=llm_model,
+                contents=prompt,
+            )
             return response.text
 
-        elif model in OLLAMA_MODELS:
-            response = ollama.chat(
-                model=model,
-                messages=[{"role": "user", "content": prompt}]
-            )
-            return response['message']['content']
-
         else:
-            return f"Error: Model '{model}' is not recognized."
+            return (
+                f"[Error] Unknown model: '{llm_model}'. Supported models: "
+                f"{sorted(OLLAMA_MODELS | GEMINI_MODELS)}"
+            )
 
     except Exception as e:
-        return f"[Gemini Error] {str(e)}"  
+        return f"[{llm_model} Error] {e}"
+
+
+def main():
+    if len(sys.argv) != 3:
+        print("Usage: python prompt_model.py <model> <prompt>")
+        print(f"Ollama models : {sorted(OLLAMA_MODELS)}")
+        print(f"Gemini models : {sorted(GEMINI_MODELS)}")
+        sys.exit(1)
+
+    response = prompt_model(sys.argv[1], sys.argv[2])
+    if response is not None:
+        print("\n--- RESPONSE ---\n")
+        print(response)
 
 
 if __name__ == "__main__":
-    if len(sys.argv) < 3:
-        print("Usage: uv run prompt_model.py <model> <prompt>")
-        sys.exit(1)
-
-    model = sys.argv[1]
-    prompt = sys.argv[2]
-
-    print("\n--- RESPONSE ---\n")
-    print(prompt_model(model, prompt))
+    main()
