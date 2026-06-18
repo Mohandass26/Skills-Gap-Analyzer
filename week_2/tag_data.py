@@ -14,8 +14,7 @@ from fastmcp.client.transports import PythonStdioTransport
 
 load_dotenv()
 
-
-# ─── CONFIGURATION ──────────────────────────────────────────────────────────
+# ─── CONFIGURATION ───────────────────────────────────────────────────────────
 
 GEMINI_MODELS = [
     "gemini-3.1-flash-lite",
@@ -25,21 +24,21 @@ GEMINI_MODELS = [
 ]
 
 RATE_LIMITS_TXT  = Path("./rate_limits.txt")
-USAGE_STATE_PATH = Path("./usage_state.json")   
+USAGE_STATE_PATH = Path("./usage_state.json")
 
-AVG_DESC_TOKENS = 300   
-PROMPT_OVERHEAD = 150   
-MAX_BATCH_SIZE  = 20    
+AVG_DESC_TOKENS = 300
+PROMPT_OVERHEAD = 150
+MAX_BATCH_SIZE  = 20
 
-MAX_RETRIES_PER_MODEL = 2     
-BACKOFF_BASE_SECONDS  = 2.0   
-MAX_BATCH_RETRIES     = 4     
+MAX_RETRIES_PER_MODEL = 2
+BACKOFF_BASE_SECONDS  = 2.0
+MAX_BATCH_RETRIES     = 4
 
 TPM_SAFETY_MARGIN = 0.8   # only plan batches against 80% of TPM/RPM
 RPD_SAFETY_MARGIN = 0.9   # stop using a model once 90% of its daily RPD is used
 
 REGEX_FAST_PATH_ENABLED = True
-REGEX_MIN_MATCHES = 2     
+REGEX_MIN_MATCHES = 2
 
 FETCH_MULTIPLIER = 3
 FETCH_BATCH_CAP  = 60
@@ -50,7 +49,6 @@ DB_PATH_ALT = "data/job.db"
 
 # VERBOSE = False keeps the console output minimal: just "Analyzed Job ..."
 VERBOSE = False
-
 
 
 # ─── ENTRY POINT ─────────────────────────────────────────────────────────────
@@ -96,7 +94,7 @@ def _parse_rate_limits(path: Path) -> dict:
     return limits
 
 
-# ─── DAILY USAGE TRACKING (so we know when a model's RPD is used up) ────────
+# ─── DAILY USAGE TRACKING ────────────────────────────────────────────────────
 
 def _load_usage() -> dict:
     if not USAGE_STATE_PATH.exists():
@@ -127,7 +125,7 @@ def _mark_exhausted(usage: dict, model: str, rpd):
     _save_usage(usage)
 
 
-# ─── MODEL SELECTION & BATCH SIZING ─────────────────────────────────────────
+# ─── MODEL SELECTION & BATCH SIZING ──────────────────────────────────────────
 
 def _select_model(limits: dict, usage: dict):
     """Returns the next usable Gemini model name, or None if every model's
@@ -296,7 +294,7 @@ def _chunked(items: list, size: int):
         yield items[i:i + size]
 
 
-# ─── MODEL CALLS (Gemini) ─────────────────────────────────────────────────────
+# ─── MODEL CALLS (Gemini) ────────────────────────────────────────────────────
 
 _gemini_client_cache = None
 
@@ -406,7 +404,6 @@ async def tag_data(db_url: str):
                 break
             llm_batch_size, retry_delay = _batch_params(limits, model)
 
-           
             fetch_size = min(llm_batch_size * FETCH_MULTIPLIER, FETCH_BATCH_CAP)
             fetch_result = await mcp_client.call_tool(
                 "get_untagged_jobs", {"limit": fetch_size, "offset": 0}
