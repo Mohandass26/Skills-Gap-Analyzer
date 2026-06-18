@@ -4,9 +4,12 @@
 
 Skills Gap Analyzer is a data-driven project that helps identify the gap between an individual's current skills and the skills demanded by the job market in Data, AI, and Python-related roles.
 
-The project is developed incrementally over multiple weeks. This repository currently contains the Week 1 Data Input & Processing Component, which focuses on building a local ETL pipeline to collect, clean, validate, store, and profile job listing data.
+The project is developed incrementally over multiple weeks. This repository currently contains:
 
-📌 The Week 1 task details are provided below. ⬇️
+- **Week 1 — Data Input & Processing Component**, which focuses on building a local ETL pipeline to collect, clean, validate, store, and profile job listing data.
+- **Week 2 — AI Analyzer Component**, which builds on Week 1's cleaned data to tag job listings with extracted tech stacks and detect skill gaps between a resume and the job market.
+
+📌 The Week 1 and Week 2 task details are provided below. ⬇️
 
 ---
 
@@ -47,8 +50,16 @@ The objective of Week 1 is to build a robust local data engineering pipeline tha
 
 ---
 
+# Week 2 : AI Analyzer Component
+
+## Objective
+
+The objective of Week 2 is to build the AI component of the skill gap detection pipeline on top of the cleaned data from Week 1. It tags each job listing in the database with an extracted tech stack using an LLM-backed pipeline (with a regex fast path to cut unnecessary model calls), then deterministically compares a candidate's resume against the tagged job market data to surface missing skills.
+
+➡️ [Click here to view Week 2](week_2/README.md)
+
+---
+
 # Author
 
 **Mohandass**
-
-
