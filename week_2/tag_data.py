@@ -1,20 +1,3 @@
-"""
-tag_data.py
-------------
-Reads the `jobs` table from a SQLite database (via an MCP server, db_server.py)
-and fills in the `tech_stack` column for every row that's missing one.
-
-Tagging is done by an LLM. Gemini models are tried first, in the order listed
-in GEMINI_MODELS. If a model's daily request cap (RPD) is used up, or a model
-keeps failing, the script automatically moves to the next Gemini model — and,
-if every Gemini model is exhausted, falls back to a local Ollama model so
-tagging can keep going instead of stopping for the day.
-
-Usage:
-    uv run tag_data.py                      # uses DB_PATH below
-    uv run tag_data.py path/to/other.db      # or pass a path explicitly
-"""
-
 import re
 import sys
 import json
@@ -31,19 +14,9 @@ from fastmcp.client.transports import PythonStdioTransport
 
 load_dotenv()
 
-try:
-    import ollama
-    _OLLAMA_AVAILABLE = True
-except ImportError:
-    _OLLAMA_AVAILABLE = False
 
-
-# ---------------------------------------------------------------------------
 # ─── CONFIGURATION ──────────────────────────────────────────────────────────
-# ---------------------------------------------------------------------------
 
-# Gemini models, tried in this order. The first one whose daily quota (RPD)
-# isn't used up yet wins.
 GEMINI_MODELS = [
     "gemini-3.1-flash-lite",
     "gemini-2.5-flash-lite",
@@ -51,72 +24,43 @@ GEMINI_MODELS = [
     "gemini-3-flash-preview",
 ]
 
-# Local fallback models — only used once every Gemini model above is
-# exhausted for the day, or a Gemini call keeps failing.
-OLLAMA_MODELS = [
-    "llama3.1",
-    "phi3",
-    "gemma3:1b",
-]
-
 RATE_LIMITS_TXT  = Path("./rate_limits.txt")
-USAGE_STATE_PATH = Path("./usage_state.json")   # tracks how many requests/model/day we've used
+USAGE_STATE_PATH = Path("./usage_state.json")   
 
-# Ollama has no official rate limit, but we still cap how hard we hit it.
-LOCAL_RPM = 60
-LOCAL_TPM = 50_000
+AVG_DESC_TOKENS = 300   
+PROMPT_OVERHEAD = 150   
+MAX_BATCH_SIZE  = 20    
 
-AVG_DESC_TOKENS = 300   # rough estimate of tokens in one job description
-PROMPT_OVERHEAD = 150   # rough estimate of tokens used by instructions/example/title/company
-MAX_BATCH_SIZE  = 20    # hard ceiling regardless of what the rate-limit math allows
+MAX_RETRIES_PER_MODEL = 2     
+BACKOFF_BASE_SECONDS  = 2.0   
+MAX_BATCH_RETRIES     = 4     
 
-MAX_RETRIES_PER_MODEL = 2     # failures on one model before moving to the next one
-BACKOFF_BASE_SECONDS  = 2.0   # doubles each retry
-MAX_BATCH_RETRIES     = 4     # total model attempts (across the whole cascade) per call
-
-# Safety margins — don't plan right up to the literal edge of a rate limit.
-# TPM_SAFETY_MARGIN leaves headroom for output tokens (TPM counts input +
-# output) and for same-minute retries; RPD_SAFETY_MARGIN keeps a few daily
-# requests in reserve instead of using a model's quota down to the last one.
 TPM_SAFETY_MARGIN = 0.8   # only plan batches against 80% of TPM/RPM
 RPD_SAFETY_MARGIN = 0.9   # stop using a model once 90% of its daily RPD is used
 
-# Regex fast path — skip the LLM entirely for jobs where well-known tech
-# terms are explicitly named in the description. Saves tokens/quota; only
-# vaguer descriptions get sent to the model.
 REGEX_FAST_PATH_ENABLED = True
-REGEX_MIN_MATCHES = 2     # need at least this many distinct hits to skip the LLM
+REGEX_MIN_MATCHES = 2     
 
-# Dynamic batching — fetch a larger pool than one LLM call can safely hold,
-# since regex-resolved jobs cost no tokens at all. Whatever's left after the
-# regex pass gets chunked into rate-limit-safe pieces before hitting the LLM.
 FETCH_MULTIPLIER = 3
 FETCH_BATCH_CAP  = 60
 
-# Default DB path used when no path is given on the command line
-# (so `uv run tag_data.py` works as-is). Override with:
-#   uv run tag_data.py path/to/other.db
+# DB Path
 DB_PATH = "data/jobs_d1.db"
+DB_PATH_ALT = "data/job.db"
 
 # VERBOSE = False keeps the console output minimal: just "Analyzed Job ..."
-# lines and a final token/timing summary. Set VERBOSE = True to see round
-# breakdowns, regex-vs-LLM splits, retries, and the per-source tally — useful
-# while debugging, noisy for normal runs.
 VERBOSE = False
 
 
-# ---------------------------------------------------------------------------
+
 # ─── ENTRY POINT ─────────────────────────────────────────────────────────────
-# ---------------------------------------------------------------------------
 
 def main():
     db_url = sys.argv[1] if len(sys.argv) > 1 else DB_PATH
     asyncio.run(tag_data(db_url))
 
 
-# ---------------------------------------------------------------------------
 # ─── RATE LIMIT PARSING ──────────────────────────────────────────────────────
-# ---------------------------------------------------------------------------
 
 def _parse_num(s: str) -> int:
     s = s.strip().upper().replace(",", "")
@@ -152,9 +96,7 @@ def _parse_rate_limits(path: Path) -> dict:
     return limits
 
 
-# ---------------------------------------------------------------------------
 # ─── DAILY USAGE TRACKING (so we know when a model's RPD is used up) ────────
-# ---------------------------------------------------------------------------
 
 def _load_usage() -> dict:
     if not USAGE_STATE_PATH.exists():
@@ -185,30 +127,27 @@ def _mark_exhausted(usage: dict, model: str, rpd):
     _save_usage(usage)
 
 
-# ---------------------------------------------------------------------------
 # ─── MODEL SELECTION & BATCH SIZING ─────────────────────────────────────────
-# ---------------------------------------------------------------------------
 
 def _select_model(limits: dict, usage: dict):
-    """Returns (model_name, is_local). (None, False) if nothing usable is left.
-    Stops using a model once RPD_SAFETY_MARGIN of its daily cap is reached,
-    keeping a small reserve instead of riding the quota to the exact edge."""
+    """Returns the next usable Gemini model name, or None if every model's
+    daily quota is used up. Stops using a model once RPD_SAFETY_MARGIN of
+    its daily cap is reached, keeping a small reserve instead of riding the
+    quota to the exact edge."""
     for model in GEMINI_MODELS:
         rpd = limits.get(model, {}).get("rpd")
         if rpd is None:
-            return model, False
+            return model
         safe_cap = max(1, math.floor(rpd * RPD_SAFETY_MARGIN))
         if _requests_today(usage, model) < safe_cap:
-            return model, False
-    if _OLLAMA_AVAILABLE and OLLAMA_MODELS:
-        return OLLAMA_MODELS[0], True
-    return None, False
+            return model
+    return None
 
 
-def _batch_params(limits: dict, model: str, is_local: bool):
+def _batch_params(limits: dict, model: str):
     m   = limits.get(model, {})
-    tpm = m.get("tpm", LOCAL_TPM if is_local else 250_000)
-    rpm = m.get("rpm", LOCAL_RPM if is_local else 5)
+    tpm = m.get("tpm", 250_000)
+    rpm = m.get("rpm", 5)
     safe_tpm = tpm * TPM_SAFETY_MARGIN
     safe_rpm = max(1, math.floor(rpm * TPM_SAFETY_MARGIN))
     est_tokens_per_job = AVG_DESC_TOKENS + PROMPT_OVERHEAD
@@ -217,9 +156,7 @@ def _batch_params(limits: dict, model: str, is_local: bool):
     return batch_size, float(retry_delay)
 
 
-# ---------------------------------------------------------------------------
 # ─── PROMPT BUILDING ─────────────────────────────────────────────────────────
-# ---------------------------------------------------------------------------
 
 _PROMPT_HEADER = [
     "You are a technical recruiter assistant.",
@@ -259,9 +196,7 @@ def _build_prompt(jobs: list) -> str:
     return "\n".join(lines)
 
 
-# ---------------------------------------------------------------------------
 # ─── RESPONSE PARSING ────────────────────────────────────────────────────────
-# ---------------------------------------------------------------------------
 
 def _parse_response(raw: str, expected_ids: list) -> dict:
     result = {}
@@ -276,14 +211,7 @@ def _parse_response(raw: str, expected_ids: list) -> dict:
     return result
 
 
-# ---------------------------------------------------------------------------
 # ─── REGEX FAST PATH ─────────────────────────────────────────────────────────
-# ---------------------------------------------------------------------------
-# Well-known tech terms that, if explicitly named, can be tagged with zero
-# LLM calls. This list is intentionally not exhaustive — it only needs to
-# catch the common/obvious cases; anything it misses still falls through to
-# the LLM, same as before. Order matters a little (e.g. GitHub/GitLab are
-# checked before the bare "Git" pattern so they don't get swallowed by it).
 
 _TECH_PATTERNS = [
     (re.compile(r"\bPython\b", re.I), "Python"),
@@ -368,9 +296,7 @@ def _chunked(items: list, size: int):
         yield items[i:i + size]
 
 
-# ---------------------------------------------------------------------------
-# ─── MODEL CALLS (Gemini, with Ollama fallback) ──────────────────────────────
-# ---------------------------------------------------------------------------
+# ─── MODEL CALLS (Gemini) ─────────────────────────────────────────────────────
 
 _gemini_client_cache = None
 
@@ -382,37 +308,12 @@ def _get_gemini_client():
     return _gemini_client_cache
 
 
-def _get_field(obj, key):
-    """Works whether `obj` is a dict (older ollama versions) or an object
-    with attributes (newer ollama versions return typed response objects)."""
-    if obj is None:
-        return None
-    if isinstance(obj, dict):
-        return obj.get(key)
-    return getattr(obj, key, None)
-
-
 def _estimate_tokens(prompt: str, text: str) -> int:
     # Rough fallback when a model doesn't report real usage: ~4 tokens/word.
     return (len(prompt.split()) + len(text.split())) * 4
 
 
-async def _call_model(model: str, is_local: bool, prompt: str) -> tuple[str, int]:
-    if is_local:
-        response = await asyncio.to_thread(
-            ollama.chat, model=model, messages=[{"role": "user", "content": prompt}]
-        )
-        message = _get_field(response, "message")
-        text = _get_field(message, "content") or ""
-
-        prompt_tokens = _get_field(response, "prompt_eval_count")
-        completion_tokens = _get_field(response, "eval_count")
-        if prompt_tokens is not None and completion_tokens is not None:
-            tokens_used = prompt_tokens + completion_tokens
-        else:
-            tokens_used = _estimate_tokens(prompt, text)
-        return text, tokens_used
-
+async def _call_model(model: str, prompt: str) -> tuple[str, int]:
     client = _get_gemini_client()
     response = await client.aio.models.generate_content(model=model, contents=prompt)
     text = response.text
@@ -425,21 +326,21 @@ async def _call_model(model: str, is_local: bool, prompt: str) -> tuple[str, int
 
 async def _call_with_fallback(prompt: str, limits: dict, usage: dict):
     """
-    Calls the best available model. If a model keeps failing (or its daily
-    quota is hit), marks it exhausted for today and cascades to the next
-    model — eventually a local Ollama model — instead of giving up outright.
+    Calls the best available Gemini model. If a model keeps failing (or its
+    daily quota is hit), marks it exhausted for today and cascades to the
+    next Gemini model instead of giving up outright.
 
     Returns (text, model_name, tokens_used). On total failure, returns
     (None, None, 0).
     """
     fail_counts = {}
     for _ in range(MAX_BATCH_RETRIES):
-        model, is_local = _select_model(limits, usage)
+        model = _select_model(limits, usage)
         if model is None:
-            print("  No model available (Gemini quota used up, no Ollama installed) — skipping.")
+            print("  No model available (Gemini quota used up) — skipping.")
             return None, None, 0
         try:
-            text, tokens_used = await _call_model(model, is_local, prompt)
+            text, tokens_used = await _call_model(model, prompt)
             _record_request(usage, model)
             return text, model, tokens_used
         except Exception as e:
@@ -454,9 +355,7 @@ async def _call_with_fallback(prompt: str, limits: dict, usage: dict):
     return None, None, 0
 
 
-# ---------------------------------------------------------------------------
 # ─── MCP HELPERS ─────────────────────────────────────────────────────────────
-# ---------------------------------------------------------------------------
 
 def _extract_tool_result(call_tool_result):
     if call_tool_result is None:
@@ -476,15 +375,13 @@ def _extract_tool_result(call_tool_result):
     return None
 
 
-# ---------------------------------------------------------------------------
 # ─── CORE TAG_DATA ───────────────────────────────────────────────────────────
-# ---------------------------------------------------------------------------
 
 async def tag_data(db_url: str):
     start_time = time.perf_counter()
     total_tokens = 0
     regex_resolved_count = 0
-    source_of = {}        # source_id -> "regex" / model name (+ " (ollama)" if local)
+    source_of = {}        # source_id -> "regex" / model name
     source_counts = {}    # source label -> how many jobs it actually tagged
 
     transport  = PythonStdioTransport("db_server.py", args=[db_url])
@@ -503,15 +400,13 @@ async def tag_data(db_url: str):
             if total_untagged == 0:
                 break
 
-            model, is_local = _select_model(limits, usage)
+            model = _select_model(limits, usage)
             if model is None:
-                print("No usable model left (Gemini quota used up, no Ollama) — stopping.")
+                print("No usable model left (Gemini quota used up) — stopping.")
                 break
-            llm_batch_size, retry_delay = _batch_params(limits, model, is_local)
+            llm_batch_size, retry_delay = _batch_params(limits, model)
 
-            # Over-fetch: regex-resolved jobs cost zero LLM tokens, so pulling
-            # more than one LLM call's worth per round means fewer DB round
-            # trips for the same amount of model-side work.
+           
             fetch_size = min(llm_batch_size * FETCH_MULTIPLIER, FETCH_BATCH_CAP)
             fetch_result = await mcp_client.call_tool(
                 "get_untagged_jobs", {"limit": fetch_size, "offset": 0}
@@ -538,8 +433,7 @@ async def tag_data(db_url: str):
 
             if VERBOSE:
                 print(f"\n[Round {round_num}] pulled {len(pool)} jobs ({total_untagged} left) — "
-                      f"{len(parsed)} resolved by regex, {len(needs_llm)} need {model}"
-                      f"{' (local)' if is_local else ''}")
+                      f"{len(parsed)} resolved by regex, {len(needs_llm)} need {model}")
 
             # --- LLM path: only the jobs regex couldn't resolve, chunked to
             # stay within this model's rate-limit-safe batch size ---
@@ -557,7 +451,7 @@ async def tag_data(db_url: str):
                         break
                     llm_parsed = _parse_response(raw, expected_ids)
                     parsed.update(llm_parsed)
-                    label = used_model + (" (ollama)" if used_model in OLLAMA_MODELS else "")
+                    label = used_model
                     for sid in llm_parsed:
                         source_of[sid] = label
                     remaining = [j for j in remaining if str(j["source_id"]) not in parsed]

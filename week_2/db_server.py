@@ -1,19 +1,3 @@
-"""
-db_server.py
--------------
-A FastMCP server that exposes the jobs SQLite database as MCP tools,
-so that LLM clients (e.g. tag_data.py) interact with the database
-indirectly through tool calls instead of executing raw SQL themselves.
-
-Schema assumed (jobs table): source_id, job_title, company, description, tech_stack
-
-Run standalone for testing:
-    python db_server.py
-
-Used as a subprocess by an MCP Client, e.g.:
-    mcp_client = Client("db_server.py")
-"""
-
 import sqlite3
 import sys
 from fastmcp import FastMCP
