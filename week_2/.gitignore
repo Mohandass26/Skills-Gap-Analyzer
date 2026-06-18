@@ -4,3 +4,4 @@ __pycache__/
 .venv/
 .env
 usage_state.json
+skill_gap_cache.json
