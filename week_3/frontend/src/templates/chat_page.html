@@ -1,10 +1,299 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <title>Week 3 Frontend</title>
-</head>
-<body>
-    <h1>hello world!</h1>
-</body>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Resume Helper Chatbot</title>
+    <link
+      href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/css/bootstrap.min.css"
+      rel="stylesheet"
+      integrity="sha384-sRIl4kxILFvY47J16cr9ZwB07vP4J8+LH7qKQnuqkuIAvNWLzeN8tE5YBujZqJLB"
+      crossorigin="anonymous"
+    />
+    <style>
+      :root {
+        --bubble-user: #5b4fdb;
+        --panel-bg: #f2f1ec;
+      }
+      body {
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+          Helvetica, Arial, sans-serif;
+      }
+      .chat-card {
+        max-width: 700px;
+        border: 1px solid #e3e2db;
+        border-radius: 10px;
+        overflow: hidden;
+      }
+      .chat-header {
+        padding: 0.9rem 1.25rem;
+        border-bottom: 1px solid #e3e2db;
+        background: #fff;
+      }
+      .chat-header h1 {
+        font-size: 1.1rem;
+        font-weight: 600;
+        margin: 0;
+        color: #2b2b2b;
+      }
+      .chat-history {
+        height: 60vh;
+        min-height: 320px;
+        overflow-y: auto;
+        background: var(--panel-bg);
+        padding: 1.25rem;
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+      }
+      .bubble {
+        max-width: 75%;
+        padding: 0.5rem 0.9rem;
+        border-radius: 999px;
+        font-size: 0.9rem;
+        line-height: 1.3;
+        word-wrap: break-word;
+        white-space: pre-wrap;
+      }
+      .bubble.bot {
+        align-self: flex-start;
+        background: #ffffff;
+        border: 1px solid #e3e2db;
+        color: #2b2b2b;
+      }
+      .bubble.user {
+        align-self: flex-end;
+        background: var(--bubble-user);
+        color: #fff;
+      }
+      .bubble.error {
+        align-self: flex-start;
+        background: #fdecea;
+        border: 1px solid #f3c2c2;
+        color: #842029;
+      }
+      .bubble .attachment {
+        display: block;
+        margin-top: 0.25rem;
+        font-size: 0.75rem;
+        opacity: 0.8;
+      }
+      .chat-input-bar {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        padding: 0.75rem;
+        border-top: 1px solid #e3e2db;
+        background: #fff;
+      }
+      .attach-btn {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 38px;
+        height: 38px;
+        border-radius: 50%;
+        border: 1px solid #d8d7d0;
+        color: #6b6a63;
+        cursor: pointer;
+        flex-shrink: 0;
+      }
+      .attach-btn:hover {
+        background: #f2f1ec;
+      }
+      .chat-text-input {
+        border-radius: 999px;
+        border: 1px solid #d8d7d0;
+      }
+      .chat-text-input:focus {
+        box-shadow: none;
+        border-color: var(--bubble-user);
+      }
+      .send-btn {
+        background: var(--bubble-user);
+        color: #fff;
+        border: none;
+        border-radius: 999px;
+        padding: 0.45rem 1.25rem;
+        font-weight: 500;
+        flex-shrink: 0;
+      }
+      .send-btn:hover {
+        background: #4a3fc4;
+        color: #fff;
+      }
+      .send-btn:disabled {
+        opacity: 0.6;
+      }
+      .file-indicator {
+        padding: 0 0.9rem 0.6rem;
+        font-size: 0.78rem;
+        color: #6b6a63;
+        min-height: 1.2rem;
+      }
+      .file-indicator .remove-file {
+        color: #c0392b;
+        cursor: pointer;
+        margin-left: 0.4rem;
+        text-decoration: underline;
+      }
+    </style>
+  </head>
+  <body class="bg-white">
+    <div class="container py-4">
+      <div class="chat-card mx-auto">
+        <div class="chat-header">
+          <h1>Resume Helper Chatbot</h1>
+        </div>
+
+        <div id="chat-history" class="chat-history"></div>
+
+        <form id="chat-form" class="chat-input-bar">
+          <label for="pdf-upload" class="attach-btn" title="Attach a PDF">
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              width="18"
+              height="18"
+              viewBox="0 0 16 16"
+              fill="currentColor"
+            >
+              <path
+                d="M4.5 3a2.5 2.5 0 0 1 5 0v9a1.5 1.5 0 0 1-3 0V5a.5.5 0 0 1 1 0v7a.5.5 0 0 0 1 0V3a1.5 1.5 0 0 0-3 0v9a2.5 2.5 0 0 0 5 0V5a.5.5 0 0 1 1 0v7a3.5 3.5 0 0 1-7 0V3z"
+              />
+            </svg>
+          </label>
+          <input
+            type="file"
+            id="pdf-upload"
+            accept="application/pdf"
+            class="d-none"
+          />
+          <input
+            type="text"
+            id="message-input"
+            class="form-control chat-text-input"
+            placeholder="Type a message..."
+            autocomplete="off"
+          />
+          <button type="submit" class="btn send-btn">Send</button>
+        </form>
+        <div id="file-indicator" class="file-indicator"></div>
+      </div>
+    </div>
+
+    <script
+      src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/js/bootstrap.bundle.min.js"
+      integrity="sha384-FKyoEForCGlyvwx9Hj09JcYn3nv7wiPVlz7YYwJrWVcXK/BmnVDxM+D2scQbITxI"
+      crossorigin="anonymous"
+    ></script>
+
+    <script>
+      const chatHistoryEl = document.getElementById("chat-history");
+      const chatForm = document.getElementById("chat-form");
+      const messageInput = document.getElementById("message-input");
+      const pdfUploadInput = document.getElementById("pdf-upload");
+      const fileIndicatorEl = document.getElementById("file-indicator");
+      const sendBtn = chatForm.querySelector(".send-btn");
+
+      let selectedFile = null;
+
+      function addBubble(text, sender, attachmentName) {
+        const bubble = document.createElement("div");
+        bubble.className = `bubble ${sender}`;
+        bubble.textContent = text;
+
+        if (attachmentName) {
+          const attach = document.createElement("span");
+          attach.className = "attachment";
+          attach.textContent = `📎 ${attachmentName}`;
+          bubble.appendChild(attach);
+        }
+
+        chatHistoryEl.appendChild(bubble);
+        chatHistoryEl.scrollTop = chatHistoryEl.scrollHeight;
+        return bubble;
+      }
+
+      pdfUploadInput.addEventListener("change", () => {
+        const file = pdfUploadInput.files[0];
+        if (!file) return;
+
+        if (file.type !== "application/pdf") {
+          fileIndicatorEl.textContent = "Only PDF files are supported.";
+          pdfUploadInput.value = "";
+          selectedFile = null;
+          return;
+        }
+
+        selectedFile = file;
+        renderFileIndicator();
+      });
+
+      function renderFileIndicator() {
+        fileIndicatorEl.textContent = "";
+        if (!selectedFile) return;
+
+        fileIndicatorEl.append(`Attached: ${selectedFile.name}`);
+        const removeLink = document.createElement("span");
+        removeLink.className = "remove-file";
+        removeLink.textContent = "remove";
+        removeLink.addEventListener("click", () => {
+          selectedFile = null;
+          pdfUploadInput.value = "";
+          renderFileIndicator();
+        });
+        fileIndicatorEl.appendChild(removeLink);
+      }
+
+      // The actual JSON-over-the-wire call to the backend happens server-side
+      // in app.py (/send) -- it converts any attached PDF to text and then
+      // POSTs {"message": ..., "pdf_text": ...} to BACKEND_URL.
+      chatForm.addEventListener("submit", async (e) => {
+        e.preventDefault();
+
+        const message = messageInput.value.trim();
+        if (!message && !selectedFile) return;
+
+        sendBtn.disabled = true;
+
+        addBubble(
+          message || "(sent a PDF with no message)",
+          "user",
+          selectedFile ? selectedFile.name : null
+        );
+
+        const formData = new FormData();
+        formData.append("message", message);
+        if (selectedFile) {
+          formData.append("pdf", selectedFile);
+        }
+
+        messageInput.value = "";
+        selectedFile = null;
+        pdfUploadInput.value = "";
+        renderFileIndicator();
+
+        try {
+          const res = await fetch("/send", {
+            method: "POST",
+            body: formData,
+          });
+          const data = await res.json();
+
+          if (!res.ok) {
+            throw new Error(data.error || `Request failed (${res.status})`);
+          }
+
+          addBubble(data.reply || "(empty response from backend)", "bot");
+        } catch (err) {
+          console.error(err);
+          addBubble(err.message || "Something went wrong.", "error");
+        } finally {
+          sendBtn.disabled = false;
+        }
+      });
+
+      addBubble("Hi! How can I help you today?", "bot");
+    </script>
+  </body>
 </html>
