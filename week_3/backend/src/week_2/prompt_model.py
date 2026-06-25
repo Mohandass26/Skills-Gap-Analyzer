@@ -1,9 +1,15 @@
+import os
 import sys
 import ollama
 from google import genai
 from dotenv import load_dotenv
 
 load_dotenv()
+
+SECRET_PATH = "/run/secrets/gemini_api_key"
+if os.path.exists(SECRET_PATH):
+    with open(SECRET_PATH, "r", encoding="utf-8") as f:
+        os.environ["GEMINI_API_KEY"] = f.read().strip()
 
 ollama_client = ollama.Client()
 gemini_client = None
