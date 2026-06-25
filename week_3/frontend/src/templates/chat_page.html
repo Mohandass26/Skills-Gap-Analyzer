@@ -262,6 +262,7 @@
       const toast = document.getElementById("toast");
 
       let selectedFile = null;
+      let activeResumeText = ""; // persists across messages once a resume has been uploaded
       let busy = false; // prevents double-sends and mid-flight file changes
 
       // ── Toast helper ─────────────────────────────────────────
@@ -390,10 +391,11 @@
         );
         showTyping();
 
-        let pdfText = "";
+        let pdfText = activeResumeText; // reuse the last uploaded resume by default
         if (selectedFile) {
           try {
             pdfText = await extractPDFText(selectedFile);
+            activeResumeText = pdfText; // remember it for future messages too
           } catch (err) {
             console.error("Failed to extract PDF text:", err);
             hideTyping();
