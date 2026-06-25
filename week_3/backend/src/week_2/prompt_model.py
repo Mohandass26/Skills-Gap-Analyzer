@@ -5,8 +5,16 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-gemini_client = genai.Client()      # reads GEMINI_API_KEY (or GOOGLE_API_KEY) from env
 ollama_client = ollama.Client()
+gemini_client = None
+
+
+def get_gemini_client():
+    global gemini_client
+    if gemini_client is None:
+        gemini_client = genai.Client()  # reads GEMINI_API_KEY (or GOOGLE_API_KEY) from env
+    return gemini_client
+
 
 OLLAMA_MODELS = {
     "llama3.1",
@@ -40,7 +48,8 @@ def prompt_model(llm_model: str, prompt: str) -> str | None:
             return response.response
 
         elif llm_model in GEMINI_MODELS:
-            response = gemini_client.models.generate_content(
+            client = get_gemini_client()
+            response = client.models.generate_content(
                 model=llm_model,
                 contents=prompt,
             )

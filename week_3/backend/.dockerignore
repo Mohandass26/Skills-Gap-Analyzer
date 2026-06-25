@@ -11,3 +11,7 @@ venv/
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
+
+# Runtime cache file -- gets regenerated automatically, no need to bake
+# a stale copy into the image.
+src/week_2/skill_gap_cache.json
