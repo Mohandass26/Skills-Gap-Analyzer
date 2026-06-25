@@ -1,0 +1,55 @@
+services:
+  backend:
+    image: backend
+    pull_policy: build
+    build:
+      context: ./backend
+    container_name: resume-backend
+    env_file:
+      - ./.env
+    ports:
+      - "8001:8001"
+    volumes:
+      - ./backend/src/week_2/data/:/app/src/week_2/data:ro
+    restart: unless-stopped
+    networks:
+      - app-network
+
+  frontend:
+    image: frontend
+    pull_policy: build
+    build:
+      context: ./frontend
+    container_name: resume-frontend
+    environment:
+      # Service name "backend" resolves via Docker's internal DNS on
+      # the shared network below -- not localhost, not an IP.
+      BACKEND_URL: http://backend:8001
+    ports:
+      - "8000:8000"
+    depends_on:
+      - backend
+    restart: unless-stopped
+    networks:
+      - app-network
+
+  # Inactive by default. Only starts if you explicitly run:
+  #   docker compose --profile ollama up --build
+  ollama:
+    profiles: ["ollama"]
+    image: ollama/ollama:latest
+    container_name: resume-ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    restart: unless-stopped
+    networks:
+      - app-network
+
+networks:
+  app-network:
+    driver: bridge
+
+volumes:
+  ollama_data:
