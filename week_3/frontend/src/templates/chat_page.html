@@ -244,8 +244,12 @@
       integrity="sha384-FKyoEForCGlyvwx9Hj09JcYn3nv7wiPVlz7YYwJrWVcXK/BmnVDxM+D2scQbITxI"
       crossorigin="anonymous"
     ></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 
     <script>
+      pdfjsLib.GlobalWorkerOptions.workerSrc =
+        "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+
       const MAX_PDF_SIZE = 10 * 1024 * 1024; // 10 MB
 
       const chatHistoryEl = document.getElementById("chat-history");
@@ -349,10 +353,24 @@
         fileIndicatorEl.appendChild(removeLink);
       }
 
+      // ── Client-side PDF text extraction (via pdf.js) ──────────
+      async function extractPDFText(file) {
+        const buffer = await file.arrayBuffer();
+        const pdf = await pdfjsLib.getDocument({ data: buffer }).promise;
+        let text = "";
+        for (let i = 1; i <= pdf.numPages; i++) {
+          const page = await pdf.getPage(i);
+          const content = await page.getTextContent();
+          text += content.items.map((item) => item.str).join(" ") + "\n";
+        }
+        return text.trim();
+      }
+
       // ── Submit ───────────────────────────────────────────────
-      // The actual JSON-over-the-wire call to the backend happens server-side
-      // in app.py (/send) -- it converts any attached PDF to text and then
-      // POSTs {"message": ..., "pdf_text": ...} to BACKEND_URL.
+      // The PDF (if any) is converted to text right here in the browser
+      // via pdf.js, then sent as plain JSON to /send, which simply
+      // forwards {"message": ..., "pdf_text": ...} to the backend --
+      // no PDF parsing happens server-side.
       chatForm.addEventListener("submit", async (e) => {
         e.preventDefault();
         if (busy) return;
@@ -372,10 +390,17 @@
         );
         showTyping();
 
-        const formData = new FormData();
-        formData.append("message", message);
+        let pdfText = "";
         if (selectedFile) {
-          formData.append("pdf", selectedFile);
+          try {
+            pdfText = await extractPDFText(selectedFile);
+          } catch (err) {
+            console.error("Failed to extract PDF text:", err);
+            hideTyping();
+            addBubble("Couldn't read that PDF. Is it a text-based PDF?", "error");
+            setLoading(false);
+            return;
+          }
         }
 
         messageInput.value = "";
@@ -386,7 +411,8 @@
         try {
           const res = await fetch("/send", {
             method: "POST",
-            body: formData,
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ message: message, pdf_text: pdfText }),
           });
           const data = await res.json();
 
