@@ -18,7 +18,9 @@ gemini_client = None
 def get_gemini_client():
     global gemini_client
     if gemini_client is None:
-        gemini_client = genai.Client()  # reads GEMINI_API_KEY (or GOOGLE_API_KEY) from env
+        gemini_client = (
+            genai.Client()
+        )  # reads GEMINI_API_KEY (or GOOGLE_API_KEY) from env
     return gemini_client
 
 

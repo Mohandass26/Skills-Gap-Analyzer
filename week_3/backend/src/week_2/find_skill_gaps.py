@@ -14,6 +14,7 @@ from pydantic import BaseModel
 
 try:
     from dotenv import load_dotenv
+
     load_dotenv()
 except ImportError:
     pass  # .env loading is a convenience, not a hard requirement
@@ -47,17 +48,43 @@ CERT_PATTERN = re.compile(r"\bcertifi(?:ed|cate[sd]?|cation[s]?)\b", re.IGNORECA
 # here will still slip through -- there's no fixed list that can anticipate
 # every way "communication skills" gets written in a job post.
 SOFT_SKILLS = {
-    "leadership", "management", "communication", "communication skills",
-    "teamwork", "collaboration", "problem solving", "problem-solving",
-    "time management", "mentoring", "mentorship", "adaptability",
-    "creativity", "critical thinking", "stakeholder management",
-    "presentation skills", "presentation", "negotiation",
-    "conflict resolution", "interpersonal skills", "interpersonal",
-    "decision making", "decision-making", "emotional intelligence",
-    "work ethic", "attention to detail", "organizational skills",
-    "organization skills", "self-motivated", "self motivation",
-    "flexibility", "multitasking", "active listening", "public speaking",
-    "coaching", "customer service", "customer-facing",
+    "leadership",
+    "management",
+    "communication",
+    "communication skills",
+    "teamwork",
+    "collaboration",
+    "problem solving",
+    "problem-solving",
+    "time management",
+    "mentoring",
+    "mentorship",
+    "adaptability",
+    "creativity",
+    "critical thinking",
+    "stakeholder management",
+    "presentation skills",
+    "presentation",
+    "negotiation",
+    "conflict resolution",
+    "interpersonal skills",
+    "interpersonal",
+    "decision making",
+    "decision-making",
+    "emotional intelligence",
+    "work ethic",
+    "attention to detail",
+    "organizational skills",
+    "organization skills",
+    "self-motivated",
+    "self motivation",
+    "flexibility",
+    "multitasking",
+    "active listening",
+    "public speaking",
+    "coaching",
+    "customer service",
+    "customer-facing",
 }
 
 
@@ -68,6 +95,7 @@ class SkillGapResult(BaseModel):
 
 
 # ─── Deterministic Skill-String Parsing ────────────────────────────────────
+
 
 def is_certification(skill: str) -> bool:
     return bool(CERT_PATTERN.search(skill))
@@ -91,7 +119,11 @@ def parse_skills(text: str) -> Set[str]:
     skills: Set[str] = set()
     for chunk in text.replace("\n", ",").split(","):
         for part in chunk.split("/"):
-            skill = part.strip().replace("ab_testing", "a/b testing").replace("ci_cd", "ci/cd")
+            skill = (
+                part.strip()
+                .replace("ab_testing", "a/b testing")
+                .replace("ci_cd", "ci/cd")
+            )
             if skill and not is_certification(skill) and not is_soft_skill(skill):
                 skills.add(skill)
 
@@ -129,6 +161,7 @@ def skill_in_resume_text(skill: str, resume_lower: str) -> bool:
 
 # ─── Gemini Call + Token Accounting ────────────────────────────────────────
 
+
 def estimate_tokens(text: str) -> int:
     """4 tokens/word -- used only when Gemini doesn't return real usage counts."""
     return len(text.split()) * 4
@@ -150,7 +183,9 @@ def call_gemini(prompt: str) -> Tuple[str, int]:
 
     usage = response.usage_metadata
     if usage is not None and usage.prompt_token_count is not None:
-        total_tokens = usage.prompt_token_count + (usage.candidates_token_count or estimate_tokens(text))
+        total_tokens = usage.prompt_token_count + (
+            usage.candidates_token_count or estimate_tokens(text)
+        )
     else:
         total_tokens = estimate_tokens(prompt) + estimate_tokens(text)
 
@@ -212,13 +247,16 @@ Resume:
         except Exception as e:
             attempt += 1
             if attempt > MAX_RETRIES:
-                print(f"Gemini extraction failed after {attempt - 1} retries ({e}); "
-                      f"falling back to direct-match checks against the resume text.")
+                print(
+                    f"Gemini extraction failed after {attempt - 1} retries ({e}); "
+                    f"falling back to direct-match checks against the resume text."
+                )
                 return set(), 0, False
             time.sleep(RETRY_DELAY_SECONDS)
 
 
 # ─── Main Entry Point ───────────────────────────────────────────────────────
+
 
 def find_skill_gaps(input_file_path: str, db_url: str) -> SkillGapResult:
     start = time.perf_counter()
@@ -227,11 +265,15 @@ def find_skill_gaps(input_file_path: str, db_url: str) -> SkillGapResult:
 
     if not db_path.exists():
         print(f"Error: Database file not found: {db_path}")
-        return SkillGapResult(gaps=[], tokens=0, time=round(time.perf_counter() - start, 2))
+        return SkillGapResult(
+            gaps=[], tokens=0, time=round(time.perf_counter() - start, 2)
+        )
 
     if not cv_path.exists():
         print(f"Error: Resume file not found: {cv_path}")
-        return SkillGapResult(gaps=[], tokens=0, time=round(time.perf_counter() - start, 2))
+        return SkillGapResult(
+            gaps=[], tokens=0, time=round(time.perf_counter() - start, 2)
+        )
 
     try:
         resume_content = cv_path.read_text(encoding="utf-8")
@@ -253,18 +295,28 @@ def find_skill_gaps(input_file_path: str, db_url: str) -> SkillGapResult:
             gaps = sorted(required_skills - resume_skills)
         else:
             resume_lower = resume_content.lower()
-            gaps = sorted(s for s in required_skills if not skill_in_resume_text(s, resume_lower))
+            gaps = sorted(
+                s for s in required_skills if not skill_in_resume_text(s, resume_lower)
+            )
 
-        return SkillGapResult(gaps=gaps, tokens=tokens_used, time=round(time.perf_counter() - start, 2))
+        return SkillGapResult(
+            gaps=gaps, tokens=tokens_used, time=round(time.perf_counter() - start, 2)
+        )
 
     except Exception as e:
         print(f"Error while finding skill gaps: {e}")
-        return SkillGapResult(gaps=[], tokens=0, time=round(time.perf_counter() - start, 2))
+        return SkillGapResult(
+            gaps=[], tokens=0, time=round(time.perf_counter() - start, 2)
+        )
 
 
 if __name__ == "__main__":
     cv_arg = sys.argv[1] if len(sys.argv) > 1 else str(CV_PATH)
-    db_arg = sys.argv[2] if len(sys.argv) > 2 else str(DB_PATH if DB_PATH.exists() else DB_PATH_ALT)
+    db_arg = (
+        sys.argv[2]
+        if len(sys.argv) > 2
+        else str(DB_PATH if DB_PATH.exists() else DB_PATH_ALT)
+    )
 
     result = find_skill_gaps(cv_arg, db_arg)
     print(f"gaps={result.gaps} time={result.time} tokens={result.tokens}")

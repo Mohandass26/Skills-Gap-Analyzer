@@ -111,6 +111,8 @@ def _handle_resume(pdf_text: str, message: str) -> ChatResponse:
             f"postings but aren't in your resume: {', '.join(gaps)}."
         )
     else:
-        reply = "Your resume already covers the skills found in the job postings I checked!"
+        reply = (
+            "Your resume already covers the skills found in the job postings I checked!"
+        )
 
     return ChatResponse(reply=reply, skill_gaps=gaps)

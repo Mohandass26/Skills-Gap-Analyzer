@@ -23,25 +23,25 @@ GEMINI_MODELS = [
     "gemini-3-flash-preview",
 ]
 
-RATE_LIMITS_TXT  = Path("./rate_limits.txt")
+RATE_LIMITS_TXT = Path("./rate_limits.txt")
 USAGE_STATE_PATH = Path("./usage_state.json")
 
 AVG_DESC_TOKENS = 300
 PROMPT_OVERHEAD = 150
-MAX_BATCH_SIZE  = 20
+MAX_BATCH_SIZE = 20
 
 MAX_RETRIES_PER_MODEL = 2
-BACKOFF_BASE_SECONDS  = 2.0
-MAX_BATCH_RETRIES     = 4
+BACKOFF_BASE_SECONDS = 2.0
+MAX_BATCH_RETRIES = 4
 
-TPM_SAFETY_MARGIN = 0.8   # only plan batches against 80% of TPM/RPM
-RPD_SAFETY_MARGIN = 0.9   # stop using a model once 90% of its daily RPD is used
+TPM_SAFETY_MARGIN = 0.8  # only plan batches against 80% of TPM/RPM
+RPD_SAFETY_MARGIN = 0.9  # stop using a model once 90% of its daily RPD is used
 
 REGEX_FAST_PATH_ENABLED = True
 REGEX_MIN_MATCHES = 2
 
 FETCH_MULTIPLIER = 3
-FETCH_BATCH_CAP  = 60
+FETCH_BATCH_CAP = 60
 
 # DB Path
 DB_PATH = "data/jobs.db"
@@ -53,12 +53,14 @@ VERBOSE = False
 
 # ─── ENTRY POINT ─────────────────────────────────────────────────────────────
 
+
 def main():
     db_url = sys.argv[1] if len(sys.argv) > 1 else DB_PATH
     asyncio.run(tag_data(db_url))
 
 
 # ─── RATE LIMIT PARSING ──────────────────────────────────────────────────────
+
 
 def _parse_num(s: str) -> int:
     s = s.strip().upper().replace(",", "")
@@ -96,6 +98,7 @@ def _parse_rate_limits(path: Path) -> dict:
 
 # ─── DAILY USAGE TRACKING ────────────────────────────────────────────────────
 
+
 def _load_usage() -> dict:
     if not USAGE_STATE_PATH.exists():
         return {}
@@ -127,6 +130,7 @@ def _mark_exhausted(usage: dict, model: str, rpd):
 
 # ─── MODEL SELECTION & BATCH SIZING ──────────────────────────────────────────
 
+
 def _select_model(limits: dict, usage: dict):
     """Returns the next usable Gemini model name, or None if every model's
     daily quota is used up. Stops using a model once RPD_SAFETY_MARGIN of
@@ -143,13 +147,15 @@ def _select_model(limits: dict, usage: dict):
 
 
 def _batch_params(limits: dict, model: str):
-    m   = limits.get(model, {})
+    m = limits.get(model, {})
     tpm = m.get("tpm", 250_000)
     rpm = m.get("rpm", 5)
     safe_tpm = tpm * TPM_SAFETY_MARGIN
     safe_rpm = max(1, math.floor(rpm * TPM_SAFETY_MARGIN))
     est_tokens_per_job = AVG_DESC_TOKENS + PROMPT_OVERHEAD
-    batch_size  = max(1, min(math.floor(safe_tpm / est_tokens_per_job), safe_rpm, MAX_BATCH_SIZE))
+    batch_size = max(
+        1, min(math.floor(safe_tpm / est_tokens_per_job), safe_rpm, MAX_BATCH_SIZE)
+    )
     retry_delay = math.ceil(60 / rpm) if rpm else 6.0
     return batch_size, float(retry_delay)
 
@@ -188,13 +194,14 @@ def _build_prompt(jobs: list) -> str:
     for job in jobs:
         desc = (job.get("description") or "").replace("\n", " ").strip()
         lines.append(
-            f'[{job["source_id"]}] {job.get("job_title", "")} @ {job.get("company", "")}\n'
+            f"[{job['source_id']}] {job.get('job_title', '')} @ {job.get('company', '')}\n"
             f"Description: {desc}\n---"
         )
     return "\n".join(lines)
 
 
 # ─── RESPONSE PARSING ────────────────────────────────────────────────────────
+
 
 def _parse_response(raw: str, expected_ids: list) -> dict:
     result = {}
@@ -291,7 +298,7 @@ def _regex_extract(description: str) -> list:
 def _chunked(items: list, size: int):
     size = max(1, size)
     for i in range(0, len(items), size):
-        yield items[i:i + size]
+        yield items[i : i + size]
 
 
 # ─── MODEL CALLS (Gemini) ────────────────────────────────────────────────────
@@ -343,17 +350,22 @@ async def _call_with_fallback(prompt: str, limits: dict, usage: dict):
             return text, model, tokens_used
         except Exception as e:
             fail_counts[model] = fail_counts.get(model, 0) + 1
-            print(f"  [{model}] failed ({fail_counts[model]}/{MAX_RETRIES_PER_MODEL}): {e}")
+            print(
+                f"  [{model}] failed ({fail_counts[model]}/{MAX_RETRIES_PER_MODEL}): {e}"
+            )
             if fail_counts[model] >= MAX_RETRIES_PER_MODEL:
                 rpd = limits.get(model, {}).get("rpd")
                 _mark_exhausted(usage, model, rpd)
-                print(f"  [{model}] giving up on this model for today, trying the next one...")
+                print(
+                    f"  [{model}] giving up on this model for today, trying the next one..."
+                )
             else:
                 await asyncio.sleep(BACKOFF_BASE_SECONDS ** fail_counts[model])
     return None, None, 0
 
 
 # ─── MCP HELPERS ─────────────────────────────────────────────────────────────
+
 
 def _extract_tool_result(call_tool_result):
     if call_tool_result is None:
@@ -375,18 +387,19 @@ def _extract_tool_result(call_tool_result):
 
 # ─── CORE TAG_DATA ───────────────────────────────────────────────────────────
 
+
 async def tag_data(db_url: str):
     start_time = time.perf_counter()
     total_tokens = 0
     regex_resolved_count = 0
-    source_of = {}        # source_id -> "regex" / model name
-    source_counts = {}    # source label -> how many jobs it actually tagged
+    source_of = {}  # source_id -> "regex" / model name
+    source_counts = {}  # source label -> how many jobs it actually tagged
 
-    transport  = PythonStdioTransport("db_server.py", args=[db_url])
+    transport = PythonStdioTransport("db_server.py", args=[db_url])
     mcp_client = Client(transport)
 
     limits = _parse_rate_limits(RATE_LIMITS_TXT)
-    usage  = _load_usage()
+    usage = _load_usage()
 
     rows_updated = 0
     round_num = 0
@@ -394,7 +407,9 @@ async def tag_data(db_url: str):
     async with mcp_client:
         while True:
             count_result = await mcp_client.call_tool("count_untagged_jobs", {})
-            total_untagged = (_extract_tool_result(count_result) or {}).get("untagged_count", 0)
+            total_untagged = (_extract_tool_result(count_result) or {}).get(
+                "untagged_count", 0
+            )
             if total_untagged == 0:
                 break
 
@@ -429,8 +444,10 @@ async def tag_data(db_url: str):
             regex_resolved_count += len(parsed)
 
             if VERBOSE:
-                print(f"\n[Round {round_num}] pulled {len(pool)} jobs ({total_untagged} left) — "
-                      f"{len(parsed)} resolved by regex, {len(needs_llm)} need {model}")
+                print(
+                    f"\n[Round {round_num}] pulled {len(pool)} jobs ({total_untagged} left) — "
+                    f"{len(parsed)} resolved by regex, {len(needs_llm)} need {model}"
+                )
 
             # --- LLM path: only the jobs regex couldn't resolve, chunked to
             # stay within this model's rate-limit-safe batch size ---
@@ -442,7 +459,9 @@ async def tag_data(db_url: str):
                         break
                     expected_ids = [str(j["source_id"]) for j in remaining]
                     prompt = _build_prompt(remaining)
-                    raw, used_model, tokens_used = await _call_with_fallback(prompt, limits, usage)
+                    raw, used_model, tokens_used = await _call_with_fallback(
+                        prompt, limits, usage
+                    )
                     round_tokens += tokens_used
                     if raw is None:
                         break
@@ -451,12 +470,16 @@ async def tag_data(db_url: str):
                     label = used_model
                     for sid in llm_parsed:
                         source_of[sid] = label
-                    remaining = [j for j in remaining if str(j["source_id"]) not in parsed]
+                    remaining = [
+                        j for j in remaining if str(j["source_id"]) not in parsed
+                    ]
                     if not remaining:
                         break
                     if VERBOSE:
-                        print(f"  [Round {round_num} chunk {chunk_num}] {used_model}: "
-                              f"still missing {len(remaining)}/{len(chunk)} — retrying just those...")
+                        print(
+                            f"  [Round {round_num} chunk {chunk_num}] {used_model}: "
+                            f"still missing {len(remaining)}/{len(chunk)} — retrying just those..."
+                        )
                     await asyncio.sleep(retry_delay)
             total_tokens += round_tokens
             if VERBOSE:
@@ -470,7 +493,8 @@ async def tag_data(db_url: str):
                         print(f"  Job {sid}: no tech stack extracted (skipping).")
                     continue
                 update_result = await mcp_client.call_tool(
-                    "update_tech_stack", {"source_id": job["source_id"], "tech_stack": stack}
+                    "update_tech_stack",
+                    {"source_id": job["source_id"], "tech_stack": stack},
                 )
                 result_data = _extract_tool_result(update_result) or {}
                 if result_data.get("success", True):
@@ -486,9 +510,13 @@ async def tag_data(db_url: str):
     if rows_updated == 0:
         print("No data to tag")
     elif VERBOSE:
-        breakdown = ", ".join(f"{label}: {n}" for label, n in sorted(source_counts.items()))
-        print(f"\nDone. Updated {rows_updated} job(s) across {round_num} round(s) "
-              f"({regex_resolved_count} resolved without the LLM).")
+        breakdown = ", ".join(
+            f"{label}: {n}" for label, n in sorted(source_counts.items())
+        )
+        print(
+            f"\nDone. Updated {rows_updated} job(s) across {round_num} round(s) "
+            f"({regex_resolved_count} resolved without the LLM)."
+        )
         print(f"Tagged by — {breakdown}")
     print(f"Total tokens used: {total_tokens}, took {elapsed_ms:.3f}ms")
 
