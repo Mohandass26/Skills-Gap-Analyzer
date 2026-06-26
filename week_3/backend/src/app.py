@@ -16,9 +16,6 @@ app = FastAPI()
 
 BASE_DIR = Path(__file__).resolve().parent
 
-# Where the jobs database lives: prefers jobs.db, falls back to jobs_d1.db
-# (matches the same priority used inside week_2/find_skill_gaps.py).
-# Override either path with JOBS_DB_PATH if you store it somewhere else.
 _WEEK2_DATA_DIR = BASE_DIR / "week_2" / "data"
 _DB_PATH_MAIN = _WEEK2_DATA_DIR / "jobs.db"
 _DB_PATH_ALT = _WEEK2_DATA_DIR / "jobs_d1.db"
@@ -27,9 +24,11 @@ DB_PATH = os.getenv(
     str(_DB_PATH_MAIN if _DB_PATH_MAIN.exists() else _DB_PATH_ALT),
 )
 
-# Model used for plain conversational replies (no resume attached).
-# Must be a key from OLLAMA_MODELS or GEMINI_MODELS in week_2/prompt_model.py.
 DEFAULT_MODEL = os.getenv("DEFAULT_MODEL", "gemini-2.5-flash-lite")
+OLLAMA_DEFAULT_MODEL = os.getenv("OLLAMA_DEFAULT_MODEL", "llama3.1")
+CHAT_PROVIDER = os.getenv("CHAT_PROVIDER", "gemini").strip().lower()
+
+ACTIVE_MODEL = OLLAMA_DEFAULT_MODEL if CHAT_PROVIDER == "ollama" else DEFAULT_MODEL
 
 # Treats resume/message content strictly as data, not instructions -- defends
 # against prompt injection hidden inside a resume's text or the user's message.
@@ -72,8 +71,8 @@ def chat(payload: ChatRequest):
         return ChatResponse(reply="Please type a message or attach your resume PDF.")
 
     prompt = f"{SYSTEM_PROMPT}\n\n<Message>\n{payload.message}\n</Message>"
-    answer = prompt_model(DEFAULT_MODEL, prompt)
-    return ChatResponse(reply=answer or "Sorry, I couldn't generate a response. Please try again.")
+    answer = prompt_model(ACTIVE_MODEL, prompt)
+    return ChatResponse(reply=answer or "Sorry, I couldn't generate a response.")
 
 
 def _handle_resume(pdf_text: str, message: str) -> ChatResponse:
@@ -100,7 +99,7 @@ def _handle_resume(pdf_text: str, message: str) -> ChatResponse:
         f"Skill gaps (skills found in job postings but not in this resume): {gaps}\n\n"
         f"Respond to the user's message, mentioning the skill gaps naturally if relevant."
     )
-    answer = prompt_model(DEFAULT_MODEL, prompt)
+    answer = prompt_model(ACTIVE_MODEL, prompt)
 
     # If the LLM call fails, fall back to a plain templated reply so the
     # user still gets something useful instead of an empty response.

@@ -11,7 +11,7 @@ if os.path.exists(SECRET_PATH):
     with open(SECRET_PATH, "r", encoding="utf-8") as f:
         os.environ["GEMINI_API_KEY"] = f.read().strip()
 
-ollama_client = ollama.Client()
+ollama_client = ollama.Client(host=os.getenv("OLLAMA_HOST", "http://localhost:11434"))
 gemini_client = None
 
 
